@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 16px;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      margin-bottom: 16px;
+    }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; color: #64748b; }
+    .field input, .field select {
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    #branchCodeInput { width: 160px; text-transform: uppercase; }
+    .btn-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+    }
+    button.secondary { background: #0f766e; }
+    button.ghost { background: #e2e8f0; color: #0f172a; }
+    .scanner-box {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      margin-bottom: 16px;
+    }
+    .scanner-box label { font-size: 12px; color: #64748b; display: block; margin-bottom: 6px; }
+    #scannerInput {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      border: 2px dashed #93c5fd;
+      border-radius: 8px;
+      background: #eff6ff;
+    }
+    #scannerInput:focus { outline: none; border-color: #2563eb; background: #dbeafe; }
+    .status-line { margin-top: 8px; font-size: 14px; min-height: 20px; }
+    .status-line.ok { color: #16a34a; }
+    .status-line.error { color: #dc2626; }
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      margin-bottom: 16px;
+    }
+    .panel h2 { font-size: 15px; margin: 0 0 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }
+    th { background: #f8fafc; color: #475569; position: sticky; top: 0; }
+    .table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+    .empty-row td { text-align: center; color: #94a3b8; padding: 24px; }
+    .hidden { display: none !important; }
+    .swal2-input { display: block !important; width: 100% !important; margin: 6px 0 12px !important; }
+    .camera-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.92);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .camera-modal-inner {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      width: 100%;
+      max-width: 420px;
+    }
+    .camera-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    #cameraReader { width: 100%; border-radius: 8px; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="field">
+      <label for="branchCodeInput">รหัสสาขา (6 หลัก)</label>
+      <input type="text" id="branchCodeInput" maxlength="6" placeholder="เช่น KK0001">
+    </div>
+    <div class="field">
+      <label for="shiftSelect">รอบ</label>
+      <select id="shiftSelect">
+        <option value="1">เข้างาน</option>
+        <option value="2">เลิกงาน</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button id="btnExcel">ดึงข้อมูลเป็น Excel</button>
+    <button id="btnWorkplace" class="secondary">ดึงข้อมูลเพื่อส่งเข้าโปรแกรม Workplaze</button>
+  </div>
+
+  <div class="scanner-box">
+    <label for="scannerInput">จุดสแกน QR Code (ระบบโฟกัสอัตโนมัติ — ใช้เครื่องสแกนยิงที่นี่)</label>
+    <input type="text" id="scannerInput" autocomplete="off">
+    <div class="status-line" id="scanStatus"></div>
+    <div class="btn-row" style="margin-top:12px; margin-bottom:0;">
+      <button id="openCameraBtn" class="ghost">📷 สแกนด้วยกล้องมือถือ</button>
+    </div>
+  </div>
+
+  <div class="camera-modal hidden" id="cameraModal">
+    <div class="camera-modal-inner">
+      <div class="camera-modal-header">
+        <span>สแกน QR ด้วยกล้อง</span>
+        <button id="closeCameraBtn" class="ghost">ปิด</button>
+      </div>
+      <div id="cameraReader"></div>
+      <div class="status-line" id="cameraStatus"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>รายการสแกนวันนี้ (สาขาที่ระบุด้านบน)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>รหัสพนักงาน</th><th>รอบการลงเวลา</th><th>วัน/เดือน/ปี</th><th>เวลา</th>
+            <th>รหัสหน่วยงาน</th><th>ชื่อ-นามสกุล</th><th>ระดับพนักงาน</th><th>ตำแหน่ง</th>
+            <th>สาขา</th><th>ชื่อสาขาแบบเต็ม</th>
+          </tr>
+        </thead>
+        <tbody id="liveLogBody"><tr class="empty-row"><td colspan="10">ยังไม่มีรายการ</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="exportSection">
+    <h2 id="exportTitle">ผลการค้นหา</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>รหัสพนักงาน</th><th>รอบการลงเวลา</th><th>วัน/เดือน/ปี</th><th>เวลา</th>
+            <th>รหัสหน่วยงาน</th><th>ชื่อ-นามสกุล</th><th>ระดับพนักงาน</th><th>ตำแหน่ง</th>
+            <th>สาขา</th><th>ชื่อสาขาแบบเต็ม</th>
+          </tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button id="generateBtn" class="secondary">สร้างไฟล์</button>
+    </div>
+  </div>
+
+  <script>
+    var currentExport = null; // { kind, branch, from, to }
+
+    function shiftLabel(v) { return v == 1 ? '1 - เข้างาน' : '2 - เลิกงาน'; }
+
+    function bangkokParts() {
+      var now = new Date();
+      var d = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric'
+      }).format(now).split('/'); // dd/mm/yyyy
+      var hm = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false
+      }).format(now).split(':');
+      return { dateStr: d[2] + '-' + d[1] + '-' + d[0], hour: parseInt(hm[0], 10), minute: parseInt(hm[1], 10) };
+    }
+
+    function defaultShift() {
+      var p = bangkokParts();
+      var totalMin = p.hour * 60 + p.minute;
+      return (totalMin >= 60 && totalMin <= 720) ? '1' : '2'; // 01:00-12:00 -> เข้างาน, หลัง 12:00 -> เลิกงาน
+    }
+
+    // ---- Branch code + shift controls ----
+    var branchInput = document.getElementById('branchCodeInput');
+    var shiftSelect = document.getElementById('shiftSelect');
+    var scannerInput = document.getElementById('scannerInput');
+
+    branchInput.value = localStorage.getItem('kkc_branch_code') || '';
+    shiftSelect.value = defaultShift();
+
+    branchInput.addEventListener('input', function () {
+      branchInput.value = branchInput.value.toUpperCase();
+    });
+    branchInput.addEventListener('change', function () {
+      localStorage.setItem('kkc_branch_code', branchInput.value.trim().toUpperCase());
+      loadLiveLog();
+      focusScanner();
+    });
+
+    function focusScanner() {
+      setTimeout(function () { scannerInput.focus(); }, 30);
+    }
+
+    document.body.addEventListener('click', function (e) {
+      if (!document.getElementById('cameraModal').classList.contains('hidden')) return;
+      var tag = e.target.tagName;
+      var interactive = ['INPUT', 'SELECT', 'BUTTON', 'A', 'OPTION'].indexOf(tag) !== -1;
+      if (!interactive || e.target === scannerInput) focusScanner();
+    });
+
+    // ---- Live scan log ----
+    function renderRows(tbodyId, rows, emptyText) {
+      var tbody = document.getElementById(tbodyId);
+      if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="10">' + emptyText + '</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' +
+          '<td>' + r.employeeId + '</td>' +
+          '<td>' + shiftLabel(r.shiftStatus) + '</td>' +
+          '<td>' + r.date + '</td>' +
+          '<td>' + r.time + '</td>' +
+          '<td>' + r.branchCode + '</td>' +
+          '<td>' + r.name + '</td>' +
+          '<td>' + r.level + '</td>' +
+          '<td>' + r.position + '</td>' +
+          '<td>' + r.location + '</td>' +
+          '<td>' + r.locationDescription + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    function loadLiveLog() {
+      var branch = branchInput.value.trim().toUpperCase();
+      if (!branch) { renderRows('liveLogBody', [], 'กรุณากรอกรหัสสาขาด้านบน'); return; }
+      google.script.run
+        .withSuccessHandler(function (rows) { renderRows('liveLogBody', rows, 'ยังไม่มีรายการ'); })
+        .withFailureHandler(function () { renderRows('liveLogBody', [], 'โหลดข้อมูลไม่สำเร็จ'); })
+        .getRecentRecords(branch);
+    }
+
+    function prependLiveLog(row) {
+      var tbody = document.getElementById('liveLogBody');
+      if (tbody.querySelector('.empty-row')) tbody.innerHTML = '';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + row.employeeId + '</td>' +
+        '<td>' + shiftLabel(row.shiftStatus) + '</td>' +
+        '<td>' + row.date + '</td>' +
+        '<td>' + row.time + '</td>' +
+        '<td>' + row.branchCode + '</td>' +
+        '<td>' + row.name + '</td>' +
+        '<td>' + row.level + '</td>' +
+        '<td>' + row.position + '</td>' +
+        '<td>' + row.location + '</td>' +
+        '<td>' + row.locationDescription + '</td>';
+      tbody.insertBefore(tr, tbody.firstChild);
+    }
+
+    // ---- Scanner input handling ----
+    function setStatus(text, cls) {
+      var el = document.getElementById('scanStatus');
+      el.textContent = text || '';
+      el.className = 'status-line' + (cls ? ' ' + cls : '');
+    }
+
+    function scanErrorText(code) {
+      switch (code) {
+        case 'invalid_branch': return 'กรุณากรอกรหัสสาขา 6 หลักให้ถูกต้อง';
+        case 'invalid_shift': return 'กรุณาเลือกรอบการลงเวลา';
+        case 'bad_format': return 'QR Code ไม่ถูกต้อง';
+        case 'bad_signature': return 'QR Code ไม่ถูกต้องหรือถูกปลอมแปลง';
+        case 'expired': return 'QR Code หมดอายุ กรุณาให้พนักงานรีเฟรชหน้าจอแล้วสแกนใหม่';
+        case 'duplicate_scan': return 'สแกนซ้ำ - รายการนี้เพิ่งถูกบันทึกไปแล้ว';
+        case 'not_found': return 'ไม่พบข้อมูลพนักงานนี้ในระบบ';
+        case 'lookup_failed': return 'ระบบขัดข้อง กรุณาลองใหม่';
+        default: return 'เกิดข้อผิดพลาด กรุณาลองใหม่';
+      }
+    }
+
+    function processScan(token, onDone) {
+      if (!token) { if (onDone) onDone(); return; }
+
+      var branch = branchInput.value.trim().toUpperCase();
+      if (!branch) {
+        setStatus('กรุณากรอกรหัสสาขาก่อนสแกน', 'error');
+        if (onDone) onDone();
+        return;
+      }
+      var shift = shiftSelect.value;
+
+      setStatus('กำลังบันทึก...', '');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.ok) {
+            setStatus('✓ บันทึกสำเร็จ: ' + res.row.name + ' (' + shiftLabel(res.row.shiftStatus) + ')', 'ok');
+            prependLiveLog(res.row);
+          } else {
+            setStatus(scanErrorText(res && res.error), 'error');
+          }
+          focusScanner();
+          if (onDone) onDone(res);
+        })
+        .withFailureHandler(function () {
+          setStatus('เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่', 'error');
+          focusScanner();
+          if (onDone) onDone();
+        })
+        .recordAttendance(token, branch, shift);
+    }
+
+    scannerInput.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      var token = scannerInput.value.trim();
+      scannerInput.value = '';
+      processScan(token);
+    });
+
+    // ---- Camera scanning (for using this page on a phone with no handheld scanner) ----
+    var html5QrCode = null;
+    var lastCamToken = null;
+    var lastCamTime = 0;
+    var CAMERA_DEBOUNCE_MS = 4000;
+
+    function setCameraStatus(text) {
+      document.getElementById('cameraStatus').textContent = text || '';
+    }
+
+    function onCameraDecoded(decodedText) {
+      var now = Date.now();
+      if (decodedText === lastCamToken && (now - lastCamTime) < CAMERA_DEBOUNCE_MS) return;
+      lastCamToken = decodedText;
+      lastCamTime = now;
+      setCameraStatus('อ่าน QR สำเร็จ กำลังบันทึก...');
+      processScan(decodedText, function (res) {
+        if (res && res.ok) {
+          setCameraStatus('✓ บันทึกสำเร็จ: ' + res.row.name + ' — เล็งกล้องที่ QR ถัดไปได้เลย');
+        } else {
+          setCameraStatus(scanErrorText(res && res.error));
+        }
+      });
+    }
+
+    function openCameraModal() {
+      if (!branchInput.value.trim()) {
+        Swal.fire('แจ้งเตือน', 'กรุณากรอกรหัสสาขาก่อนเปิดกล้อง', 'warning');
+        return;
+      }
+      document.getElementById('cameraModal').classList.remove('hidden');
+      setCameraStatus('กำลังเปิดกล้อง...');
+      html5QrCode = new Html5Qrcode('cameraReader');
+      html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 250 },
+        onCameraDecoded,
+        function () { /* ignore per-frame "no QR found" callbacks */ }
+      ).then(function () {
+        setCameraStatus('เล็งกล้องไปที่ QR Code ของพนักงาน');
+      }).catch(function (err) {
+        setCameraStatus('เปิดกล้องไม่สำเร็จ: ' + err);
+      });
+    }
+
+    function closeCameraModal() {
+      document.getElementById('cameraModal').classList.add('hidden');
+      if (html5QrCode) {
+        html5QrCode.stop().then(function () {
+          html5QrCode.clear();
+          html5QrCode = null;
+        }).catch(function () { html5QrCode = null; });
+      }
+      focusScanner();
+    }
+
+    document.getElementById('openCameraBtn').addEventListener('click', openCameraModal);
+    document.getElementById('closeCameraBtn').addEventListener('click', closeCameraModal);
+
+    // ---- Export modal (Excel / Workplace) ----
+    function getBranchOptions() {
+      return new Promise(function (resolve) {
+        google.script.run
+          .withSuccessHandler(function (codes) { resolve(codes || []); })
+          .withFailureHandler(function () { resolve([]); })
+          .getDistinctBranchCodes();
+      });
+    }
+
+    async function openExportModal(kind) {
+      var codes = await getBranchOptions();
+      var today = bangkokParts().dateStr;
+      var optionsHtml = codes.map(function (c) { return '<option value="' + c + '">'; }).join('');
+
+      var html =
+        '<div style="text-align:left">' +
+          '<label style="font-size:13px;color:#64748b;">สาขา (พิมพ์ค้นหาได้ / เว้นว่าง = ทั้งหมด)</label>' +
+          '<input id="swalBranch" list="swalBranchList" class="swal2-input" placeholder="เช่น KK0001">' +
+          '<datalist id="swalBranchList">' + optionsHtml + '</datalist>' +
+          '<label style="font-size:13px;color:#64748b;">ตั้งแต่วันที่</label>' +
+          '<input id="swalFrom" type="date" class="swal2-input" value="' + today + '">' +
+          '<label style="font-size:13px;color:#64748b;">ถึงวันที่</label>' +
+          '<input id="swalTo" type="date" class="swal2-input" value="' + today + '">' +
+        '</div>';
+
+      var result = await Swal.fire({
+        title: kind === 'excel' ? 'ดึงข้อมูลเป็น Excel' : 'ดึงข้อมูลเพื่อส่งเข้าโปรแกรม Workplaze',
+        html: html,
+        showCancelButton: true,
+        confirmButtonText: 'ค้นหา',
+        cancelButtonText: 'ยกเลิก',
+        focusConfirm: false,
+        preConfirm: function () {
+          var branch = document.getElementById('swalBranch').value.trim().toUpperCase();
+          var from = document.getElementById('swalFrom').value;
+          var to = document.getElementById('swalTo').value;
+          if (!from || !to) {
+            Swal.showValidationMessage('กรุณาเลือกวันที่ให้ครบถ้วน');
+            return false;
+          }
+          if (from > to) {
+            Swal.showValidationMessage('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด');
+            return false;
+          }
+          return { branch: branch, from: from, to: to };
+        }
+      });
+
+      if (!result.isConfirmed) return;
+      currentExport = { kind: kind, branch: result.value.branch, from: result.value.from, to: result.value.to };
+      loadExportPreview();
+    }
+
+    function loadExportPreview() {
+      var ex = currentExport;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res.ok) {
+            Swal.fire('ผิดพลาด', scanErrorText(res.error), 'error');
+            return;
+          }
+          renderRows('previewBody', res.rows, 'ไม่พบข้อมูลตามเงื่อนไขที่เลือก');
+          document.getElementById('exportSection').classList.remove('hidden');
+          document.getElementById('exportTitle').textContent =
+            'ผลการค้นหา — สาขา: ' + (ex.branch || 'ทั้งหมด') + ' (' + ex.from + ' ถึง ' + ex.to + ')';
+          document.getElementById('generateBtn').textContent =
+            ex.kind === 'excel' ? 'สร้างไฟล์ Excel' : 'สร้างไฟล์ Workplace';
+        })
+        .withFailureHandler(function () {
+          Swal.fire('ผิดพลาด', 'เชื่อมต่อไม่สำเร็จ', 'error');
+        })
+        .getAttendanceRecords(ex.branch, ex.from, ex.to);
+    }
+
+    function downloadBase64File(base64, fileName, mime) {
+      var byteChars = atob(base64);
+      var byteNumbers = new Array(byteChars.length);
+      for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+      var blob = new Blob([new Uint8Array(byteNumbers)], { type: mime });
+      triggerDownload(blob, fileName);
+    }
+
+    function downloadTextFile(content, fileName) {
+      triggerDownload(new Blob([content], { type: 'text/plain' }), fileName);
+    }
+
+    function triggerDownload(blob, fileName) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('generateBtn').addEventListener('click', function () {
+      if (!currentExport) return;
+      var ex = currentExport;
+      var btn = this;
+      btn.disabled = true;
+      Swal.fire({ title: 'กำลังสร้างไฟล์...', didOpen: function () { Swal.showLoading(); }, allowOutsideClick: false });
+
+      if (ex.kind === 'excel') {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            btn.disabled = false;
+            Swal.close();
+            if (!res.ok) { Swal.fire('ผิดพลาด', scanErrorText(res.error), 'error'); return; }
+            downloadBase64File(res.base64, res.fileName, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          })
+          .withFailureHandler(function () {
+            btn.disabled = false;
+            Swal.fire('ผิดพลาด', 'สร้างไฟล์ไม่สำเร็จ', 'error');
+          })
+          .exportExcel(ex.branch, ex.from, ex.to);
+      } else {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            btn.disabled = false;
+            Swal.close();
+            if (!res.ok) { Swal.fire('ผิดพลาด', scanErrorText(res.error), 'error'); return; }
+            downloadTextFile(res.content, res.fileName);
+          })
+          .withFailureHandler(function () {
+            btn.disabled = false;
+            Swal.fire('ผิดพลาด', 'สร้างไฟล์ไม่สำเร็จ', 'error');
+          })
+          .exportWorkplaceText(ex.branch, ex.from, ex.to);
+      }
+    });
+
+    document.getElementById('btnExcel').addEventListener('click', function () { openExportModal('excel'); });
+    document.getElementById('btnWorkplace').addEventListener('click', function () { openExportModal('workplace'); });
+
+    // ---- init ----
+    loadLiveLog();
+    focusScanner();
+  </script>
+</body>
+</html>
