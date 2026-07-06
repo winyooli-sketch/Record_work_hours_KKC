@@ -403,10 +403,17 @@
       lastCamTime = now;
       setCameraStatus('อ่าน QR สำเร็จ กำลังบันทึก...');
       processScan(decodedText, function (res) {
+        closeCameraModal();
         if (res && res.ok) {
-          setCameraStatus('✓ บันทึกสำเร็จ: ' + res.row.name + ' — เล็งกล้องที่ QR ถัดไปได้เลย');
+          Swal.fire({
+            icon: 'success',
+            title: 'บันทึกสำเร็จ',
+            text: res.row.name + ' (' + shiftLabel(res.row.shiftStatus) + ')',
+            timer: 2000,
+            showConfirmButton: false
+          });
         } else {
-          setCameraStatus(scanErrorText(res && res.error));
+          Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: scanErrorText(res && res.error) });
         }
       });
     }
