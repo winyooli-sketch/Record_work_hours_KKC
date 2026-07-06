@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <base target="_top">
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KKC - จุดสแกนเข้างาน</title>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
@@ -13,6 +14,15 @@
       background: #f1f5f9;
       color: #0f172a;
       padding: 16px;
+    }
+    .config-warning {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
     }
     .topbar {
       display: flex;
@@ -110,6 +120,11 @@
   </style>
 </head>
 <body>
+  <div class="config-warning hidden" id="configWarning">
+    ยังไม่ได้ตั้งค่า WEBAPP_URL — แก้ค่าตัวแปรนี้ในไฟล์ index.html ให้ชี้ไปที่ URL "/exec"
+    ของ Apps Script (โปรเจกต์ scan-admin-app) ก่อนใช้งาน
+  </div>
+
   <div class="topbar">
     <div class="field">
       <label for="branchCodeInput">รหัสสาขา (6 หลัก)</label>
@@ -185,6 +200,35 @@
   </div>
 
   <script>
+    // ---- Backend config ----
+    // Paste the deployed scan-admin-app Web App URL here (Deploy → Manage deployments → Web app URL),
+    // it ends in "/exec". This page calls it over HTTPS via fetch() instead of google.script.run,
+    // because this file is meant to be hosted outside Apps Script (e.g. GitHub Pages) so the phone's
+    // camera isn't blocked by the permissions policy of Apps Script's own iframe wrapper.
+    var WEBAPP_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+    if (!WEBAPP_URL || WEBAPP_URL.indexOf('PASTE_YOUR') === 0) {
+      document.getElementById('configWarning').classList.remove('hidden');
+    }
+
+    function apiGet(action, params) {
+      var url = new URL(WEBAPP_URL);
+      url.searchParams.set('action', action);
+      Object.keys(params || {}).forEach(function (k) {
+        if (params[k] !== undefined && params[k] !== null) url.searchParams.set(k, params[k]);
+      });
+      return fetch(url.toString()).then(function (r) { return r.json(); });
+    }
+
+    function apiPost(action, params) {
+      var body = Object.assign({ action: action }, params || {});
+      return fetch(WEBAPP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); });
+    }
+
     var currentExport = null; // { kind, branch, from, to }
 
     function shiftLabel(v) { return v == 1 ? '1 - เข้างาน' : '2 - เลิกงาน'; }
@@ -260,10 +304,9 @@
     function loadLiveLog() {
       var branch = branchInput.value.trim().toUpperCase();
       if (!branch) { renderRows('liveLogBody', [], 'กรุณากรอกรหัสสาขาด้านบน'); return; }
-      google.script.run
-        .withSuccessHandler(function (rows) { renderRows('liveLogBody', rows, 'ยังไม่มีรายการ'); })
-        .withFailureHandler(function () { renderRows('liveLogBody', [], 'โหลดข้อมูลไม่สำเร็จ'); })
-        .getRecentRecords(branch);
+      apiGet('recent', { branchCode: branch })
+        .then(function (res) { renderRows('liveLogBody', (res && res.rows) || [], 'ยังไม่มีรายการ'); })
+        .catch(function () { renderRows('liveLogBody', [], 'โหลดข้อมูลไม่สำเร็จ'); });
     }
 
     function prependLiveLog(row) {
@@ -317,8 +360,8 @@
       var shift = shiftSelect.value;
 
       setStatus('กำลังบันทึก...', '');
-      google.script.run
-        .withSuccessHandler(function (res) {
+      apiPost('scan', { token: token, branchCode: branch, shiftStatus: shift })
+        .then(function (res) {
           if (res && res.ok) {
             setStatus('✓ บันทึกสำเร็จ: ' + res.row.name + ' (' + shiftLabel(res.row.shiftStatus) + ')', 'ok');
             prependLiveLog(res.row);
@@ -328,12 +371,11 @@
           focusScanner();
           if (onDone) onDone(res);
         })
-        .withFailureHandler(function () {
+        .catch(function () {
           setStatus('เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่', 'error');
           focusScanner();
           if (onDone) onDone();
-        })
-        .recordAttendance(token, branch, shift);
+        });
     }
 
     scannerInput.addEventListener('keydown', function (e) {
@@ -344,7 +386,7 @@
       processScan(token);
     });
 
-    // ---- Camera scanning (for using this page on a phone with no handheld scanner) ----
+    // ---- Camera scanning ----
     var html5QrCode = null;
     var lastCamToken = null;
     var lastCamTime = 0;
@@ -405,12 +447,7 @@
 
     // ---- Export modal (Excel / Workplace) ----
     function getBranchOptions() {
-      return new Promise(function (resolve) {
-        google.script.run
-          .withSuccessHandler(function (codes) { resolve(codes || []); })
-          .withFailureHandler(function () { resolve([]); })
-          .getDistinctBranchCodes();
-      });
+      return apiGet('branches', {}).then(function (res) { return (res && res.codes) || []; }).catch(function () { return []; });
     }
 
     async function openExportModal(kind) {
@@ -459,8 +496,8 @@
 
     function loadExportPreview() {
       var ex = currentExport;
-      google.script.run
-        .withSuccessHandler(function (res) {
+      apiGet('records', { branchCode: ex.branch, from: ex.from, to: ex.to })
+        .then(function (res) {
           if (!res.ok) {
             Swal.fire('ผิดพลาด', scanErrorText(res.error), 'error');
             return;
@@ -472,10 +509,9 @@
           document.getElementById('generateBtn').textContent =
             ex.kind === 'excel' ? 'สร้างไฟล์ Excel' : 'สร้างไฟล์ Workplace';
         })
-        .withFailureHandler(function () {
+        .catch(function () {
           Swal.fire('ผิดพลาด', 'เชื่อมต่อไม่สำเร็จ', 'error');
-        })
-        .getAttendanceRecords(ex.branch, ex.from, ex.to);
+        });
     }
 
     function downloadBase64File(base64, fileName, mime) {
@@ -508,33 +544,22 @@
       btn.disabled = true;
       Swal.fire({ title: 'กำลังสร้างไฟล์...', didOpen: function () { Swal.showLoading(); }, allowOutsideClick: false });
 
-      if (ex.kind === 'excel') {
-        google.script.run
-          .withSuccessHandler(function (res) {
-            btn.disabled = false;
-            Swal.close();
-            if (!res.ok) { Swal.fire('ผิดพลาด', scanErrorText(res.error), 'error'); return; }
+      var action = ex.kind === 'excel' ? 'exportExcel' : 'exportWorkplace';
+      apiGet(action, { branchCode: ex.branch, from: ex.from, to: ex.to })
+        .then(function (res) {
+          btn.disabled = false;
+          Swal.close();
+          if (!res.ok) { Swal.fire('ผิดพลาด', scanErrorText(res.error), 'error'); return; }
+          if (ex.kind === 'excel') {
             downloadBase64File(res.base64, res.fileName, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-          })
-          .withFailureHandler(function () {
-            btn.disabled = false;
-            Swal.fire('ผิดพลาด', 'สร้างไฟล์ไม่สำเร็จ', 'error');
-          })
-          .exportExcel(ex.branch, ex.from, ex.to);
-      } else {
-        google.script.run
-          .withSuccessHandler(function (res) {
-            btn.disabled = false;
-            Swal.close();
-            if (!res.ok) { Swal.fire('ผิดพลาด', scanErrorText(res.error), 'error'); return; }
+          } else {
             downloadTextFile(res.content, res.fileName);
-          })
-          .withFailureHandler(function () {
-            btn.disabled = false;
-            Swal.fire('ผิดพลาด', 'สร้างไฟล์ไม่สำเร็จ', 'error');
-          })
-          .exportWorkplaceText(ex.branch, ex.from, ex.to);
-      }
+          }
+        })
+        .catch(function () {
+          btn.disabled = false;
+          Swal.fire('ผิดพลาด', 'สร้างไฟล์ไม่สำเร็จ', 'error');
+        });
     });
 
     document.getElementById('btnExcel').addEventListener('click', function () { openExportModal('excel'); });
