@@ -205,7 +205,7 @@
     // it ends in "/exec". This page calls it over HTTPS via fetch() instead of google.script.run,
     // because this file is meant to be hosted outside Apps Script (e.g. GitHub Pages) so the phone's
     // camera isn't blocked by the permissions policy of Apps Script's own iframe wrapper.
-    var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxP90Gqz4ZyH-JgDOCKCtak8Z5-7NItFyuMtj-oIf2HeL_3bpEBKoYayW83sE8ex1_DNw/exec';
+    var WEBAPP_URL = 'https://script.google.com/a/macros/mkrestaurant.com/s/AKfycbxx1Q-9KE_X1ryXjsEkDJYeLCth5jJeUFYGok93Q8HmrkcdB6T0BYy6VIymopYAANqn/exec';
 
     if (!WEBAPP_URL || WEBAPP_URL.indexOf('PASTE_YOUR') === 0) {
       document.getElementById('configWarning').classList.remove('hidden');
