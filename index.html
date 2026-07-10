@@ -205,7 +205,7 @@
     // it ends in "/exec". This page calls it over HTTPS via fetch() instead of google.script.run,
     // because this file is meant to be hosted outside Apps Script (e.g. GitHub Pages) so the phone's
     // camera isn't blocked by the permissions policy of Apps Script's own iframe wrapper.
-    var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxx1Q-9KE_X1ryXjsEkDJYeLCth5jJeUFYGok93Q8HmrkcdB6T0BYy6VIymopYAANqn/exec';
+    var WEBAPP_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
 
     if (!WEBAPP_URL || WEBAPP_URL.indexOf('PASTE_YOUR') === 0) {
       document.getElementById('configWarning').classList.remove('hidden');
@@ -360,8 +360,16 @@
       var shift = shiftSelect.value;
 
       setStatus('กำลังบันทึก...', '');
+      Swal.fire({
+        title: 'กำลังบันทึกข้อมูล... (Saving data...)',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: function () { Swal.showLoading(); }
+      });
       apiPost('scan', { token: token, branchCode: branch, shiftStatus: shift })
         .then(function (res) {
+          Swal.close();
           if (res && res.ok) {
             setStatus('✓ บันทึกสำเร็จ: ' + res.row.name + ' (' + shiftLabel(res.row.shiftStatus) + ')', 'ok');
             prependLiveLog(res.row);
@@ -372,6 +380,7 @@
           if (onDone) onDone(res);
         })
         .catch(function () {
+          Swal.close();
           setStatus('เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่', 'error');
           focusScanner();
           if (onDone) onDone();
